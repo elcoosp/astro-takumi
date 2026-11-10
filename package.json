@@ -14,7 +14,6 @@
   "dependencies": {
     "@takumi-rs/core": "^2.13.7",
     "@takumi-rs/helpers": "^2.13.7",
-    "jsdom": "^31.0.0",
     "react": "^19.3.0"
   },
   "devDependencies": {
@@ -91,7 +90,8 @@
   "types": "dist/index.d.ts",
   "peerDependencies": {
     "happy-dom": "^21.0.4",
-    "linkedom": "^0.18.15"
+    "linkedom": "^0.18.15",
+    "jsdom": ">=26.0.0"
   },
   "peerDependenciesMeta": {
     "linkedom": {
@@ -99,6 +99,12 @@
     },
     "happy-dom": {
       "optional": true
+    },
+    "jsdom": {
+      "optional": true
     }
+  },
+  "optionalDependencies": {
+    "jsdom": "^31.0.0"
   }
 }
