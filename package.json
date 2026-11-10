@@ -77,7 +77,7 @@
     "printWidth": 120
   },
   "scripts": {
-    "prepare": "husky",
+    "prepare": "pnpm build",
     "lint": "oxlint",
     "build": "tsc",
     "watch": "tsc -w",
