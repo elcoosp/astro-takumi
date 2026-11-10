@@ -1,4 +1,3 @@
-import * as jsdom from "jsdom";
 import type { DomBackend } from "./types.js";
 
 interface QueryableDocument {
@@ -14,14 +13,17 @@ function toDocument(value: QueryableDocument): Document {
 /**
  * Parse an HTML string into a DOM document using the selected backend.
  *
- * `jsdom` is the default and is always available. `linkedom` and `happy-dom`
- * are optional peer dependencies that are only imported when explicitly
- * selected, so installations that keep the default do not pay for them.
+ * Every backend — including the `jsdom` default — is loaded with a dynamic
+ * `import()` so that selecting one backend never eagerly evaluates another.
+ * This matters on Node >= 24 where statically importing `jsdom@31` can trip
+ * the parse5 ESM-in-CJS-require bug even when jsdom is never used.
  */
 export async function createDocument(html: string, backend: DomBackend = "jsdom"): Promise<Document> {
   switch (backend) {
-    case "jsdom":
-      return new jsdom.JSDOM(html).window.document;
+    case "jsdom": {
+      const { JSDOM } = await import("jsdom");
+      return new JSDOM(html).window.document;
+    }
     case "linkedom": {
       const { parseHTML } = await import("linkedom");
       return parseHTML(html).document;
