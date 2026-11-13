@@ -1,6 +1,6 @@
 {
-  "name": "astro-takumi",
-  "version": "2.0.4-fork.1",
+  "name": "@elcoosp/astro-takumi",
+  "version": "2.0.4",
   "author": {
     "name": "Vikas Kapadiya",
     "email": "vikas@kapadiya.net",
@@ -8,7 +8,7 @@
   },
   "repository": {
     "type": "git",
-    "url": "git+https://github.com/vikas5914/astro-takumi.git"
+    "url": "git+https://github.com/elcoosp/astro-takumi.git"
   },
   "main": "dist/index.js",
   "dependencies": {
@@ -40,7 +40,7 @@
     "vitest": "^5.0.0"
   },
   "bugs": {
-    "url": "https://github.com/vikas5914/astro-takumi/issues"
+    "url": "https://github.com/elcoosp/astro-takumi/issues"
   },
   "commitlint": {
     "extends": [
@@ -50,14 +50,12 @@
   "description": "Generate Open Graph images for your Astro site using Takumi.",
   "files": [
     "dist",
-    "src",
     "package.json",
     "README.md",
     "LICENSE",
-    "package-lock.json",
     "CHANGELOG.md"
   ],
-  "homepage": "https://github.com/vikas5914/astro-takumi",
+  "homepage": "https://github.com/elcoosp/astro-takumi",
   "keywords": [
     "takumi",
     "astro-takumi",
@@ -84,7 +82,8 @@
     "generate:presets": "mkdir -p assets/presets && npx tsx src/presets/renderExamples.ts",
     "generate:readme": "./generate_readme.sh",
     "examples:build": "npm run build && npm run build --prefix examples/preset && npm run build --prefix examples/custom",
-    "bench": "tsx src/dom.bench.ts"
+    "bench": "tsx src/dom.bench.ts",
+    "prepublishOnly": "pnpm build"
   },
   "type": "module",
   "types": "dist/index.d.ts",
@@ -106,5 +105,15 @@
   },
   "optionalDependencies": {
     "jsdom": "^31.0.0"
+  },
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "import": "./dist/index.js"
+    }
+  },
+  "packageManager": "pnpm@12.18.0",
+  "engines": {
+    "node": ">=20"
   }
 }

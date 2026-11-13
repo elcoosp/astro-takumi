@@ -8,5 +8,6 @@
     "sourceMap": true,
     "jsx": "react-jsx"
   },
-  "include": ["src"]
+  "include": ["src"],
+  "exclude": ["src/**/*.test.ts", "src/**/*.test.tsx", "src/**/*.bench.ts", "src/**/*.bench.tsx", "dist", "node_modules"]
 }
