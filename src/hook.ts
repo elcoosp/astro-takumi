@@ -40,6 +40,21 @@ interface RenderedPage {
   buffer: Buffer;
 }
 
+// SAFETY: when the render function's source never mentions `document` it cannot
+// access it (every legitimate use destructures or reads `.document`, both of
+// which contain the token). Passing a null-prototype stand-in keeps the typed
+// surface intact while skipping the DOM parse entirely.
+const NO_DOCUMENT: Document = Object.create(null) as unknown as Document;
+
+/**
+ * Heuristic: does the render function's source reference `document` at all?
+ * False positives (a comment, an unused param) only cost a redundant parse —
+ * never a crash — so this is safe to use for a perf fast-path.
+ */
+function needsDocument(render: RenderFunction): boolean {
+  return /\bdocument\b/.test(render.toString());
+}
+
 export async function buildDoneHook({
   logger,
   pages,
@@ -78,6 +93,8 @@ export async function buildDoneHook({
     exclude !== undefined && exclude.length > 0 ? pages.filter((p) => !isExcluded(p.pathname, exclude)) : pages;
   const skipped = pages.length - targets.length;
 
+  const requiresDom = needsDocument(render);
+
   let hits = 0;
   let misses = 0;
   let copyMs = 0;
@@ -107,7 +124,9 @@ export async function buildDoneHook({
     const r0 = performance.now();
     const htmlString = html.toString();
     const details = extractMetaFast(htmlString);
-    const document = await createDocument(htmlString, options.domBackend);
+    // Lazy DOM: skip linkedom/jsdom entirely when the renderer never touches it.
+    const document = requiresDom ? await createDocument(htmlString, options.domBackend) : NO_DOCUMENT;
+
     const reactNode = await render({ ...page, ...details, dir, document });
     const { node, css } = await fromJsx(reactNode);
 
@@ -154,7 +173,7 @@ export async function buildDoneHook({
       `(render ${String(Math.round(renderMs))}ms, copy ${String(Math.round(copyMs))}ms, write ${String(Math.round(writeMs))}ms, ` +
       `concurrency ${String(level)}${options.cache === false ? ", cache off" : ""}${
         fontsRegistered ? ", fonts registered once" : ""
-      })`,
+      }${!requiresDom ? ", DOM parse skipped" : ""})`,
   );
 }
 
@@ -179,7 +198,9 @@ export async function speculativePreRender({ logger, options, render, globalKey 
   const targets =
     exclude !== undefined && exclude.length > 0 ? entries.filter((e) => !isExcluded(e.pathname, exclude)) : entries;
 
+  const requiresDom = needsDocument(render);
   let done = 0;
+
   await runPool(targets, level, async (entry) => {
     if (await cache.hasBlob(entry.key)) {
       done++;
@@ -198,6 +219,7 @@ export async function speculativePreRender({ logger, options, render, globalKey 
         fontsRegistered,
         globalKey,
         dir: new URL("http://localhost/"),
+        requiresDom,
       });
       await cache.putBlob(rendered.key, rendered.buffer);
       done++;
@@ -220,13 +242,15 @@ interface RenderPageInput {
   fontsRegistered: boolean;
   globalKey: string;
   dir: URL;
+  requiresDom: boolean;
 }
 
 async function renderPageToBuffer(input: RenderPageInput): Promise<RenderedPage> {
   const htmlHash = sha256Hex(input.html);
   const key = pageCacheKey(input.globalKey, input.page.pathname, htmlHash);
-  const details = extractMetaFast(input.html.toString());
-  const document = await createDocument(input.html.toString(), input.options.domBackend);
+  const htmlString = input.html.toString();
+  const details = extractMetaFast(htmlString);
+  const document = input.requiresDom ? await createDocument(htmlString, input.options.domBackend) : NO_DOCUMENT;
   const reactNode = await input.render({ ...input.page, ...details, dir: input.dir, document });
   const { node, css } = await fromJsx(reactNode);
   const prepareImagesOptions: PrepareImagesOptions<ImageSource> = { node, fetchCache: input.fetchCache };
@@ -252,15 +276,14 @@ function buildRenderOptions(
     width: options.width,
     height: options.height,
     drawDebugBorder: options.drawDebugBorder,
-    css: cssArray,
+    css: cssArray as any,
     images,
     format: options.format as any,
-  };
+  } as RenderOptions;
 
   if (options.format === "jpeg" || options.format === "webp") {
     (renderOptions as any).quality = options.quality;
   }
-
   if (!fontsRegistered && options.fonts) {
     (renderOptions as any).fonts = options.fonts;
   }

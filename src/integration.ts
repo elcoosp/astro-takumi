@@ -33,18 +33,18 @@ export function astroTakumi({ options, render }: IntegrationInput): AstroIntegra
         }
       },
       "astro:build:done": async (entry: AstroBuildDoneHookInput) => {
-        // SAFETY: AstroBuildDoneHookInput has exactOptionalPropertyTypes. We build this object
-        // dynamically to conditionally include 'speculative' only when it is defined.
-        const hookInput: Record<string, unknown> = {
+        // SAFETY: AstroBuildDoneHookInput has exactOptionalPropertyTypes. We use 'any' to
+        // conditionally add 'speculative' without triggering TS2352 overlap errors.
+        const input: any = {
           ...entry,
           options: optionsWithDefaults,
           render,
           globalKey,
         };
         if (speculative !== undefined) {
-          hookInput["speculative"] = speculative;
+          input.speculative = speculative;
         }
-        return buildDoneHook(hookInput as Parameters<typeof buildDoneHook>[0]);
+        return buildDoneHook(input);
       },
     },
   };

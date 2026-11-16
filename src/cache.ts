@@ -38,19 +38,20 @@ function hashBytes(data: Uint8Array | ArrayBuffer | string): string {
 
 export function hashFontLoader(f: FontLoader): string {
   if (typeof f === "string") return sha256Hex(`str:${f}`);
-  // oxlint-disable anti-slop/no-runtime-typeof
-  if (typeof f === "function") return sha256Hex(`fn:${// SAFETY: Function type is narrowed by typeof check above
-    (f as (...args: unknown[]) => string).toString()}`);
+  if (typeof f === "function") {
+    // SAFETY: Function type is narrowed by typeof check above.
+    return sha256Hex(`fn:${(f as (...args: unknown[]) => string).toString()}`);
+  }
   if (f instanceof Uint8Array) return sha256Hex(`bytes:${hashBytes(f)}`);
   if (f instanceof ArrayBuffer) return sha256Hex(`bytes:${hashBytes(f)}`);
   if (typeof f === "object" && f !== null) {
-    // SAFETY: f is narrowed to object && !== null
+    // SAFETY: f is narrowed to object && !== null.
     const obj = f as Record<string, unknown>;
     const parts: string[] = [];
     for (const k of Object.keys(obj).sort()) {
       const v = obj[k];
       if (v instanceof Uint8Array || v instanceof ArrayBuffer || typeof v === "string") {
-        parts.push(`${k}=${hashBytes(v)}`);
+        parts.push(`${k}=${hashBytes(v as Uint8Array | ArrayBuffer | string)}`);
       } else if (typeof v === "number" || typeof v === "boolean") {
         parts.push(`${k}=${String(v)}`);
       }
@@ -70,7 +71,7 @@ export function readVersions(): VersionInfo {
   let integration = "unknown";
   let core = "unknown";
   try {
-    // SAFETY: package.json is known to have an optional version string
+    // SAFETY: package.json is known to have an optional version string.
     const pkg = require("../package.json") as { version?: string };
     if (typeof pkg.version === "string") integration = pkg.version;
   } catch {
@@ -82,7 +83,7 @@ export function readVersions(): VersionInfo {
     for (let i = 0; i < 6; i++) {
       const candidate = path.join(dir, "package.json");
       if (fs.existsSync(candidate)) {
-        // SAFETY: core package.json is known to have an optional version string
+        // SAFETY: core package.json is known to have an optional version string.
         const parsed = JSON.parse(fs.readFileSync(candidate, "utf8")) as { version?: string };
         if (typeof parsed.version === "string") {
           core = parsed.version;
@@ -120,8 +121,8 @@ export function computeGlobalKey(input: {
       fonts: (o.fonts ?? []).map(hashFontLoader),
       images: (o.images ?? []).map((im: ImageSource) => ({
         src: im.src,
-        data: hashBytes(// SAFETY: ImageSource.data is typed as Uint8Array | ArrayBuffer | string in @takumi-rs/core
-        im.data as Uint8Array | ArrayBuffer | string),
+        // SAFETY: ImageSource.data is typed as Uint8Array | ArrayBuffer | string in @takumi-rs/core.
+        data: hashBytes(im.data as Uint8Array | ArrayBuffer | string),
       })),
     }),
   );
@@ -278,6 +279,6 @@ function isFetchable(url: string): boolean {
 }
 
 function toArrayBuffer(buf: Buffer): ArrayBuffer {
-  // SAFETY: Node Buffer always wraps an ArrayBuffer with matching byteOffset/length
+  // SAFETY: Node Buffer always wraps an ArrayBuffer with matching byteOffset/length.
   return buf.buffer.slice(buf.byteOffset, buf.byteOffset + buf.byteLength) as ArrayBuffer;
 }

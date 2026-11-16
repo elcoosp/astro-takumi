@@ -71,8 +71,8 @@ test("html snapshots roundtrip through gzip", async () => {
   await cache.snapshotHtml("hash1", html);
   const back = await cache.readHtmlSnapshot("hash1");
   expect(back).toBeDefined();
-  expect(Buffer.compare(// SAFETY: readHtmlSnapshot returns Buffer | undefined, defined is checked above
-    back as Buffer, Buffer.from(html))).toBe(0);
+  // SAFETY: readHtmlSnapshot returns Buffer | undefined, defined is checked above.
+  expect(Buffer.compare(back as Buffer, Buffer.from(html))).toBe(0);
   expect(await cache.readHtmlSnapshot("missing")).toBeUndefined();
 });
 
@@ -83,15 +83,15 @@ test("DiskFetchCache persists http responses to disk and serves them to a new in
   const c1 = new DiskFetchCache(dir);
   const url = "https://example.com/logo.png";
   const bytes = new Uint8Array([9, 8, 7]);
-  const buf = bytes.buffer.slice(0, bytes.byteLength);
+  const buf = bytes.buffer.slice(0, bytes.byteLength) as ArrayBuffer;
   c1.set(url, Promise.resolve(buf));
   await c1.get(url);
 
   const c2 = new DiskFetchCache(dir);
   const served = await c2.get(url);
   expect(served).toBeDefined();
-  expect(new Uint8Array(// SAFETY: DiskFetchCache.get returns Promise<ArrayBuffer> | undefined, defined is checked above
-    served as ArrayBuffer)).toEqual(bytes);
+  // SAFETY: DiskFetchCache.get returns Promise<ArrayBuffer> | undefined, defined is checked above.
+  expect(new Uint8Array(served as ArrayBuffer)).toEqual(bytes);
 
   expect(c2.get("data:image/png;base64,AAA")).toBeUndefined();
   expect(c2.get("https://example.com/other.png")).toBeUndefined();
