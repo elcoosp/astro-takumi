@@ -24,12 +24,19 @@ export function astroTakumi({ options, render }: IntegrationInput): AstroIntegra
   const globalKey = computeGlobalKey({ render, options: optionsWithDefaults, versions: readVersions() });
   let speculative: Promise<void> | undefined;
 
+  // Skip speculative pre-render if the render function source depends on `dir`,
+  // as the speculative pass uses a dummy URL which would produce a different cache key/result.
+  const requiresDir = /\bdir\b/.test(render.toString());
+
   return {
     name: "astro-takumi",
     hooks: {
       "astro:build:start": ({ logger }: AstroBuildStartHookInput) => {
-        if (optionsWithDefaults.speculative === true && optionsWithDefaults.cache !== false) {
-          speculative = speculativePreRender({ logger, options: optionsWithDefaults, render, globalKey });
+        if (optionsWithDefaults.speculative === true && optionsWithDefaults.cache !== false && !requiresDir) {
+          const p = speculativePreRender({ logger, options: optionsWithDefaults, render, globalKey });
+          // Attach rejection handler immediately to prevent unhandled promise rejection
+          p.catch(() => { /* ignore unhandled speculative rejection */ });
+          speculative = p;
         }
       },
       "astro:build:done": async (entry: AstroBuildDoneHookInput) => {

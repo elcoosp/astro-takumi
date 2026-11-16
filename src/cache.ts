@@ -1,4 +1,4 @@
-import { createHash } from "node:crypto";
+import { createHash, randomUUID } from "node:crypto";
 import * as fs from "node:fs";
 import * as fsp from "node:fs/promises";
 import { createRequire } from "node:module";
@@ -31,7 +31,6 @@ export function pageCacheKey(globalKey: string, pathname: string, htmlHash: stri
 }
 
 function hashBytes(data: Uint8Array | ArrayBuffer | string): string {
-  // oxlint-disable-next-line anti-slop/no-runtime-typeof -- Runtime check for union members.
   if (typeof data === "string") return sha256Hex(data);
   if (data instanceof ArrayBuffer) return sha256Hex(new Uint8Array(data));
   return sha256Hex(data);
@@ -51,7 +50,6 @@ export function hashFontLoader(f: FontLoader): string {
   if (typeof f === "object" && f !== null) {
     // SAFETY: f is narrowed to object && !== null. We map known font descriptor fields.
     type FontDesc = Record<string, unknown>;
-    // SAFETY: f is narrowed to object && !== null.
     const obj = f as FontDesc;
     const parts: string[] = [];
     for (const k of Object.keys(obj).sort()) {
@@ -59,9 +57,9 @@ export function hashFontLoader(f: FontLoader): string {
       // oxlint-disable-next-line anti-slop/no-runtime-typeof -- Runtime check for union members.
       if (v instanceof Uint8Array || v instanceof ArrayBuffer || typeof v === "string") {
         parts.push(`${k}=${hashBytes(v)}`);
-        // oxlint-disable-next-line anti-slop/no-runtime-typeof -- Runtime check for union members.
       } else if (Array.isArray(v)) {
         parts.push(`${k}=${JSON.stringify(v)}`);
+      // oxlint-disable-next-line anti-slop/no-runtime-typeof -- Runtime check for union members.
       } else if (typeof v === "number" || typeof v === "boolean") {
         parts.push(`${k}=${String(v)}`);
       }
@@ -123,6 +121,7 @@ export function computeGlobalKey(input: {
       integ: input.versions.integration,
       core: input.versions.core,
       render: String(input.render),
+      cacheKey: o.cacheKey ?? null,
       width: o.width,
       height: o.height,
       format: o.format,
@@ -179,7 +178,6 @@ export class OgCache {
       if (typeof parsed !== "object" || parsed === null) return undefined;
       // SAFETY: parsed is an object, we validate version and globalKey below.
       const m = parsed as Manifest;
-      // oxlint-disable-next-line anti-slop/no-runtime-typeof
       if (m.version !== CACHE_VERSION || typeof m.globalKey !== "string") return undefined;
       return m;
     } catch {
@@ -221,7 +219,19 @@ export class OgCache {
   }
 
   async putBlob(key: string, bytes: Uint8Array): Promise<void> {
-    await fsp.writeFile(this.blobPath(key), bytes);
+    const finalPath = this.blobPath(key);
+    const tmpPath = `${finalPath}.${randomUUID()}.tmp`;
+    try {
+      await fsp.writeFile(tmpPath, bytes);
+      await fsp.rename(tmpPath, finalPath);
+    } catch (e) {
+      try {
+        await fsp.unlink(tmpPath);
+      } catch {
+        // best-effort cleanup
+      }
+      throw e;
+    }
   }
 
   record(entry: ManifestEntry): void {
@@ -232,7 +242,18 @@ export class OgCache {
   async snapshotHtml(htmlHash: string, html: Uint8Array): Promise<void> {
     const file = path.join(this.htmlDir, `${htmlHash}.gz`);
     if (fs.existsSync(file)) return;
-    await fsp.writeFile(file, gzipSync(html, { level: 6 }));
+    const tmpPath = `${file}.${randomUUID()}.tmp`;
+    try {
+      await fsp.writeFile(tmpPath, gzipSync(html, { level: 6 }));
+      await fsp.rename(tmpPath, file);
+    } catch (e) {
+      try {
+        await fsp.unlink(tmpPath);
+      } catch {
+        // best-effort cleanup
+      }
+      throw e;
+    }
   }
 
   async readHtmlSnapshot(htmlHash: string): Promise<Buffer | undefined> {
@@ -277,9 +298,11 @@ export class DiskFetchCache extends Map<string, Promise<ArrayBuffer>> {
       const wrapped = value.then(async (buf) => {
         try {
           await fsp.mkdir(path.dirname(file), { recursive: true });
-          await fsp.writeFile(file, Buffer.from(buf));
+          const tmpPath = `${file}.${randomUUID()}.tmp`;
+          await fsp.writeFile(tmpPath, Buffer.from(buf));
+          await fsp.rename(tmpPath, file);
         } catch {
-          /* best-effort */
+          // best-effort persistence; memory cache still valid
         }
         return buf;
       });

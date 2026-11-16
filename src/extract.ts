@@ -12,14 +12,21 @@ export function extractMetaFast(html: string): PageDetails {
   const headEnd = html.indexOf("</head>");
   const head = headEnd === -1 ? html.slice(0, 65536) : html.slice(0, headEnd);
   const found = new Map<string, string>();
-  const tags = head.match(/<meta\b[^>]*>/gi);
+  const tags = head.match(/<meta\b(?:[^>"']|"[^"]*"|'[^']*')*>/gi);
   if (tags !== null) {
     for (const tag of tags) {
       let property: string | undefined;
       let content: string | undefined;
-      for (const m of tag.matchAll(/(?:property|name)\s*=\s*["']([^"']*)["']|content\s*=\s*["']([^"']*)["']/gi)) {
-        if (m[1] !== undefined && property === undefined) property = m[1];
-        if (m[2] !== undefined && content === undefined) content = m[2];
+      for (const m of tag.matchAll(/\b(property|name|content)\s*=\s*("(?:[^"]*)"|'(?:[^']*)')/gi)) {
+        if (m[1] !== undefined && m[2] !== undefined) {
+          const attrName = m[1].toLowerCase();
+          const attrValue = m[2].slice(1, -1);
+          if (attrName === "property" || attrName === "name") {
+            property ??= attrValue;
+          } else if (attrName === "content") {
+            content ??= attrValue;
+          }
+        }
       }
       if (property !== undefined && content !== undefined && property.startsWith("og:") && !found.has(property)) {
         found.set(property, decodeEntities(content));
@@ -58,9 +65,7 @@ function toPageDetails(found: Map<string, string>): PageDetails {
     );
   }
 
-  // SAFETY: existence validated by the errors check above. Map.get() returns T | undefined,
-  // but we've guaranteed these are present. With exactOptionalPropertyTypes, we must NOT
-  // assign undefined to optional fields — we conditionally assign instead.
+  // SAFETY: existence validated by the errors check above.
   // oxlint-disable-next-line typescript/no-non-null-assertion -- Rule disabled in .oxlintrc.json as contradictory with non-nullable-type-assertion-style.
   const result: PageDetails = {
     title: title!,
@@ -75,12 +80,30 @@ function toPageDetails(found: Map<string, string>): PageDetails {
 }
 
 function decodeEntities(value: string): string {
-  return value
+  let decoded = value
     .replace(/&#x([0-9a-f]+);/gi, (_m: string, hex: string) => String.fromCodePoint(parseInt(hex, 16)))
-    .replace(/&#(\d+);/g, (_m: string, dec: string) => String.fromCodePoint(parseInt(dec, 10)))
-    .replace(/&quot;/g, '"')
-    .replace(/&#39;/g, "'")
-    .replace(/&lt;/g, "<")
-    .replace(/&gt;/g, ">")
-    .replace(/&amp;/g, "&");
+    .replace(/&#(\d+);/g, (_m: string, dec: string) => String.fromCodePoint(parseInt(dec, 10)));
+
+  let prev = "";
+  while (prev !== decoded) {
+    prev = decoded;
+    decoded = decoded
+      .replace(/&amp;/g, "&")
+      .replace(/&lt;/g, "<")
+      .replace(/&gt;/g, ">")
+      .replace(/&quot;/g, '"')
+      .replace(/&#39;/g, "'")
+      .replace(/&apos;/g, "'")
+      .replace(/&nbsp;/g, " ")
+      .replace(/&copy;/g, "©")
+      .replace(/&reg;/g, "®")
+      .replace(/&trade;/g, "™")
+      .replace(/&ndash;/g, "–")
+      .replace(/&mdash;/g, "—")
+      .replace(/&lsquo;/g, "‘")
+      .replace(/&rsquo;/g, "’")
+      .replace(/&ldquo;/g, "“")
+      .replace(/&rdquo;/g, "”");
+  }
+  return decoded;
 }

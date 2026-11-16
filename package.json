@@ -14,7 +14,8 @@
   "dependencies": {
     "@takumi-rs/core": "^2.13.7",
     "@takumi-rs/helpers": "^2.13.7",
-    "react": "^19.3.0"
+    "react": "^19.3.0",
+    "linkedom": "^0.18.15"
   },
   "devDependencies": {
     "@commitlint/cli": "^21.2.2",
@@ -75,7 +76,7 @@
     "printWidth": 120
   },
   "scripts": {
-    "prepare": "pnpm build",
+    "prepare": "npm run build",
     "lint": "oxlint",
     "build": "tsc",
     "watch": "tsc -w",
@@ -84,19 +85,15 @@
     "generate:readme": "./generate_readme.sh",
     "examples:build": "npm run build && npm run build --prefix examples/preset && npm run build --prefix examples/custom",
     "bench": "tsx src/dom.bench.ts",
-    "prepublishOnly": "pnpm build"
+    "prepublishOnly": "npm run build"
   },
   "type": "module",
   "types": "dist/index.d.ts",
   "peerDependencies": {
     "happy-dom": "^21.0.4",
-    "jsdom": ">=26.0.0",
-    "linkedom": "^0.18.15"
+    "jsdom": ">=26.0.0"
   },
   "peerDependenciesMeta": {
-    "linkedom": {
-      "optional": true
-    },
     "happy-dom": {
       "optional": true
     },

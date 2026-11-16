@@ -65,6 +65,11 @@ export type PartialIntegrationOptions = {
   /** Max concurrent page renders. Default: min(8, availableParallelism). */
   concurrency?: number;
   /** Skip pages matching these substrings or regexes (pathname). */
+  /**
+   * Optional custom cache key to invalidate the cache when external render
+   * dependencies change, without changing the render function source.
+   */
+  cacheKey?: string;
   exclude?: (string | RegExp)[];
 } & Partial<IntegrationDefaults>;
 
