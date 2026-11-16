@@ -1,6 +1,6 @@
 {
   "name": "@elcoosp/astro-takumi",
-  "version": "2.1.2",
+  "version": "2.2.0",
   "author": {
     "name": "Vikas Kapadiya",
     "email": "vikas@kapadiya.net",
@@ -29,6 +29,7 @@
     "astro": "^7.3.2",
     "happy-dom": "^21.0.4",
     "husky": "^9.1.7",
+    "jsdom": ">=26.0.0",
     "linkedom": "^0.18.15",
     "lint-staged": "^17.5.0",
     "oxlint": "1.92.0",
@@ -37,8 +38,7 @@
     "tinybench": "^6.2.3",
     "tsx": "^4.23.15",
     "typescript": "^7.0.2",
-    "vitest": "^5.0.0",
-    "jsdom": ">=26.0.0"
+    "vitest": "^5.0.0"
   },
   "bugs": {
     "url": "https://github.com/elcoosp/astro-takumi/issues"
@@ -90,8 +90,8 @@
   "types": "dist/index.d.ts",
   "peerDependencies": {
     "happy-dom": "^21.0.4",
-    "linkedom": "^0.18.15",
-    "jsdom": ">=26.0.0"
+    "jsdom": ">=26.0.0",
+    "linkedom": "^0.18.15"
   },
   "peerDependenciesMeta": {
     "linkedom": {
