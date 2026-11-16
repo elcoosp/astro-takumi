@@ -13,11 +13,10 @@ const SITE = "http://example.com";
 
 function fakeLogger(lines: string[]): AstroIntegrationLogger {
   const info = (msg: string) => {
-    lines.push(String(msg));
+    lines.push(msg);
   };
-  // SAFETY: buildDoneHook only uses info/warn on the logger surface.
   // SAFETY: buildDoneHook only uses info/warn/error/level on the logger surface.
-  return { info, warn: info, error: info, level: "info" } as unknown as AstroIntegrationLogger;
+  return { info, warn: info, error: info, level: "info" } as AstroIntegrationLogger;
 }
 
 const options: IntegrationOptions = {
@@ -31,13 +30,14 @@ const options: IntegrationOptions = {
   cache: true,
 };
 
-// render depends on the title so content changes produce different bytes
-const render: RenderFunction = ({ title }) =>
-  createElement(
+const render: RenderFunction = async ({ title }) => {
+  await Promise.resolve();
+  return createElement(
     "div",
     { style: { display: "flex", width: "100%", height: "100%", backgroundColor: "#000", color: "#fff" } },
     title,
   );
+};
 
 function pageHtml(title: string, pathname: string): string {
   const image = `${SITE}${pathname.endsWith("/") ? `${pathname}index` : pathname}.png`;
@@ -79,7 +79,6 @@ test("buildDoneHook: cold renders, warm hits, content-change invalidation", asyn
 
   const pages = await writePages(dist, { "/": "Home", "/blog/a/": "Post A", "/blog/b/": "Post B" });
 
-  // cold run
   const lines1: string[] = [];
   await buildDoneHook({ logger: fakeLogger(lines1), pages, dir, options: { ...options, cacheDir }, render, globalKey });
   expect(lines1.some((l) => l.includes("0 cached, 3 rendered"))).toBe(true);
@@ -87,26 +86,29 @@ test("buildDoneHook: cold renders, warm hits, content-change invalidation", asyn
   const pngB1 = await readFile(join(dist, "blog/b/index.png"));
   expect(pngA1.length).toBeGreaterThan(0);
 
-  // warm run: delete outputs, they must be restored byte-identically from cache
   await rm(join(dist, "blog/b/index.png"));
   await rm(join(dist, "index.png"));
   const lines2: string[] = [];
   await buildDoneHook({ logger: fakeLogger(lines2), pages, dir, options: { ...options, cacheDir }, render, globalKey });
-  expect(lines2.some((l) => l.includes('3 cached, 0 rendered'))).toBe(true);
+  expect(lines2.some((l) => l.includes("3 cached, 0 rendered"))).toBe(true);
   const pngB2 = await readFile(join(dist, "blog/b/index.png"));
   expect(Buffer.compare(pngB1, pngB2)).toBe(0);
 
-  // content change: only blog/a re-renders
   await writeFile(join(dist, "blog/a/index.html"), pageHtml("Post A v2", "/blog/a/"));
   const lines3: string[] = [];
   await buildDoneHook({ logger: fakeLogger(lines3), pages, dir, options: { ...options, cacheDir }, render, globalKey });
-  expect(lines3.some((l) => l.includes('2 cached, 1 rendered'))).toBe(true);
+  expect(lines3.some((l) => l.includes("2 cached, 1 rendered"))).toBe(true);
   const pngA3 = await readFile(join(dist, "blog/a/index.png"));
   expect(Buffer.compare(pngA1, pngA3)).not.toBe(0);
 
-  // config change (render fn) invalidates everything
-  const render2: RenderFunction = ({ title }) =>
-    createElement("div", { style: { width: "100%", height: "100%", backgroundColor: "#fff", color: "#000" } }, title);
+  const render2: RenderFunction = async ({ title }) => {
+    await Promise.resolve();
+    return createElement(
+      "div",
+      { style: { width: "100%", height: "100%", backgroundColor: "#fff", color: "#000" } },
+      title,
+    );
+  };
   const globalKey2 = computeGlobalKey({
     render: render2,
     options: { ...options, cacheDir },

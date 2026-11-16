@@ -3,7 +3,7 @@ import { join } from "node:path";
 import { tmpdir } from "node:os";
 import { expect, test } from "vitest";
 import { DiskFetchCache, OgCache, computeGlobalKey, pageCacheKey, sha256Hex } from "./cache.js";
-import type { IntegrationOptions } from "./types.js";
+import type { IntegrationOptions, RenderFunction } from "./types.js";
 
 async function tempDir(): Promise<string> {
   return await mkdtemp(join(tmpdir(), "takumi-cache-"));
@@ -32,15 +32,25 @@ test("pageCacheKey changes when html, path, or global key changes", () => {
 });
 
 test("computeGlobalKey reacts to render fn source and options", () => {
-  const renderA = () => "A";
-  const renderB = () => "B";
+  // SAFETY: Mock render functions for cache key hashing.
+  // They must have different source code strings so computeGlobalKey produces different hashes.
+  const mockRenderA: RenderFunction = async () => {
+    await Promise.resolve();
+    const _a = 1; // Differentiates string representation from mockRenderB
+    return null;
+  };
+  const mockRenderB: RenderFunction = async () => {
+    await Promise.resolve();
+    const _b = 2; // Differentiates string representation from mockRenderA
+    return null;
+  };
   const versions = { integration: "1", core: "1" };
-  const kA = computeGlobalKey({ render: renderA, options: baseOptions, versions });
-  const kA2 = computeGlobalKey({ render: renderA, options: baseOptions, versions });
+  const kA = computeGlobalKey({ render: mockRenderA, options: baseOptions, versions });
+  const kA2 = computeGlobalKey({ render: mockRenderA, options: baseOptions, versions });
   expect(kA).toBe(kA2);
-  const kB = computeGlobalKey({ render: renderB, options: baseOptions, versions });
+  const kB = computeGlobalKey({ render: mockRenderB, options: baseOptions, versions });
   expect(kB).not.toBe(kA);
-  const kWider = computeGlobalKey({ render: renderA, options: { ...baseOptions, width: 800 }, versions });
+  const kWider = computeGlobalKey({ render: mockRenderA, options: { ...baseOptions, width: 800 }, versions });
   expect(kWider).not.toBe(kA);
 });
 
@@ -71,8 +81,7 @@ test("html snapshots roundtrip through gzip", async () => {
   await cache.snapshotHtml("hash1", html);
   const back = await cache.readHtmlSnapshot("hash1");
   expect(back).toBeDefined();
-  // SAFETY: readHtmlSnapshot returns Buffer | undefined, defined is checked above.
-  expect(Buffer.compare(back as Buffer, Buffer.from(html))).toBe(0);
+  expect(Buffer.compare(back!, Buffer.from(html))).toBe(0);
   expect(await cache.readHtmlSnapshot("missing")).toBeUndefined();
 });
 
@@ -83,15 +92,14 @@ test("DiskFetchCache persists http responses to disk and serves them to a new in
   const c1 = new DiskFetchCache(dir);
   const url = "https://example.com/logo.png";
   const bytes = new Uint8Array([9, 8, 7]);
-  const buf = bytes.buffer.slice(0, bytes.byteLength) as ArrayBuffer;
+  const buf = bytes.buffer.slice(0, bytes.byteLength);
   c1.set(url, Promise.resolve(buf));
   await c1.get(url);
 
   const c2 = new DiskFetchCache(dir);
   const served = await c2.get(url);
   expect(served).toBeDefined();
-  // SAFETY: DiskFetchCache.get returns Promise<ArrayBuffer> | undefined, defined is checked above.
-  expect(new Uint8Array(served as ArrayBuffer)).toEqual(bytes);
+  expect(new Uint8Array(served!)).toEqual(bytes);
 
   expect(c2.get("data:image/png;base64,AAA")).toBeUndefined();
   expect(c2.get("https://example.com/other.png")).toBeUndefined();

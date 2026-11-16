@@ -58,16 +58,20 @@ function toPageDetails(found: Map<string, string>): PageDetails {
     );
   }
 
-  const returnVal: PageDetails = {
+  // SAFETY: existence validated by the errors check above. Map.get() returns T | undefined,
+  // but we've guaranteed these are present. With exactOptionalPropertyTypes, we must NOT
+  // assign undefined to optional fields — we conditionally assign instead.
+  // oxlint-disable-next-line typescript/no-non-null-assertion -- Rule disabled in .oxlintrc.json as contradictory with non-nullable-type-assertion-style.
+  const result: PageDetails = {
     title: title!,
     url: url!,
     type: type!,
     image: image!,
   };
-  if (description !== undefined && description !== returnVal.title) {
-    returnVal.description = description;
+  if (description !== undefined && description !== result.title) {
+    result.description = description;
   }
-  return returnVal;
+  return result;
 }
 
 function decodeEntities(value: string): string {

@@ -6,7 +6,7 @@ import type {
   IntegrationInput,
   IntegrationOptions,
 } from "./types.js";
-import { buildDoneHook, speculativePreRender } from "./hook.js";
+import { buildDoneHook, speculativePreRender, type BuildDoneHookInput } from "./hook.js";
 import { computeGlobalKey, readVersions } from "./cache.js";
 
 const defaults: IntegrationDefaults = {
@@ -33,9 +33,7 @@ export function astroTakumi({ options, render }: IntegrationInput): AstroIntegra
         }
       },
       "astro:build:done": async (entry: AstroBuildDoneHookInput) => {
-        // SAFETY: AstroBuildDoneHookInput has exactOptionalPropertyTypes. We use 'any' to
-        // conditionally add 'speculative' without triggering TS2352 overlap errors.
-        const input: any = {
+        const input: BuildDoneHookInput = {
           ...entry,
           options: optionsWithDefaults,
           render,

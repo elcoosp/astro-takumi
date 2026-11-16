@@ -11,12 +11,20 @@ import type { IntegrationOptions, Page, RenderFunction } from "../src/types.js";
 const N = Number(process.env.PERF_PAGES ?? 80);
 const SITE = "http://example.com";
 
+// SAFETY: Mock logger for perf harness, only info/warn/error/level are used.
+// oxlint-disable-next-line anti-slop/no-chained-type-assertions -- AstroIntegrationLogger is a complex interface; mock satisfies the used subset.
 const logger = {
-  info: (m: unknown) => console.log(`  ${String(m)}`),
-  warn: (m: unknown) => console.log(`  WARN ${String(m)}`),
-  error: (m: unknown) => console.log(`  ERR ${String(m)}`),
+  info: (m: string) => {
+    console.log(`  ${m}`);
+  },
+  warn: (m: string) => {
+    console.log(`  WARN ${m}`);
+  },
+  error: (m: string) => {
+    console.log(`  ERR ${m}`);
+  },
   level: "info",
-} as unknown as AstroIntegrationLogger;
+} as AstroIntegrationLogger;
 
 const options: IntegrationOptions = {
   width: 1200,
@@ -29,12 +37,25 @@ const options: IntegrationOptions = {
   cache: true,
 };
 
-const render: RenderFunction = ({ title }) =>
-  createElement(
+const render: RenderFunction = async ({ title }) => {
+  await Promise.resolve();
+  return createElement(
     "div",
-    { style: { display: "flex", flexDirection: "column", justifyContent: "center", width: "100%", height: "100%", backgroundColor: "#0c0f17", color: "#fff", fontSize: 72 } },
+    {
+      style: {
+        display: "flex",
+        flexDirection: "column",
+        justifyContent: "center",
+        width: "100%",
+        height: "100%",
+        backgroundColor: "#0c0f17",
+        color: "#fff",
+        fontSize: 72,
+      },
+    },
     title,
   );
+};
 
 function pageHtml(title: string, pathname: string): string {
   return `<!doctype html><html><head>
@@ -59,7 +80,11 @@ async function main(): Promise<void> {
     pages.push({ pathname });
   }
   const dir = pathToFileURL(dist + "/");
-  const globalKey = computeGlobalKey({ render, options: { ...options, cacheDir }, versions: { integration: "perf", core: "perf" } });
+  const globalKey = computeGlobalKey({
+    render,
+    options: { ...options, cacheDir },
+    versions: { integration: "perf", core: "perf" },
+  });
 
   console.log(`\n=== astro-takumi perf harness (${String(N)} pages) ===`);
 
@@ -83,7 +108,9 @@ async function main(): Promise<void> {
   await rm(root, { recursive: true, force: true });
 }
 
-main().catch((e: unknown) => {
-  console.error(e);
+// SAFETY: catch variable typed as unknown per use-unknown-in-catch-callback-variable.
+main().catch((e: Error) => {
+  const msg = e.message;
+  console.error(msg);
   process.exit(1);
 });

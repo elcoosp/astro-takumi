@@ -31,27 +31,37 @@ export function pageCacheKey(globalKey: string, pathname: string, htmlHash: stri
 }
 
 function hashBytes(data: Uint8Array | ArrayBuffer | string): string {
+  // oxlint-disable-next-line anti-slop/no-runtime-typeof -- Runtime check for union members.
   if (typeof data === "string") return sha256Hex(data);
   if (data instanceof ArrayBuffer) return sha256Hex(new Uint8Array(data));
   return sha256Hex(data);
 }
 
 export function hashFontLoader(f: FontLoader): string {
+  // oxlint-disable-next-line anti-slop/no-runtime-typeof -- FontLoader is an untagged union from @takumi-rs/core; runtime discrimination is required.
   if (typeof f === "string") return sha256Hex(`str:${f}`);
+  // oxlint-disable-next-line anti-slop/no-runtime-typeof -- FontLoader is an untagged union.
   if (typeof f === "function") {
     // SAFETY: Function type is narrowed by typeof check above.
     return sha256Hex(`fn:${(f as (...args: unknown[]) => string).toString()}`);
   }
   if (f instanceof Uint8Array) return sha256Hex(`bytes:${hashBytes(f)}`);
   if (f instanceof ArrayBuffer) return sha256Hex(`bytes:${hashBytes(f)}`);
+  // oxlint-disable-next-line anti-slop/no-runtime-typeof -- FontLoader is an untagged union.
   if (typeof f === "object" && f !== null) {
+    // SAFETY: f is narrowed to object && !== null. We map known font descriptor fields.
+    type FontDesc = Record<string, unknown>;
     // SAFETY: f is narrowed to object && !== null.
-    const obj = f as Record<string, unknown>;
+    const obj = f as FontDesc;
     const parts: string[] = [];
     for (const k of Object.keys(obj).sort()) {
       const v = obj[k];
+      // oxlint-disable-next-line anti-slop/no-runtime-typeof -- Runtime check for union members.
       if (v instanceof Uint8Array || v instanceof ArrayBuffer || typeof v === "string") {
-        parts.push(`${k}=${hashBytes(v as Uint8Array | ArrayBuffer | string)}`);
+        parts.push(`${k}=${hashBytes(v)}`);
+        // oxlint-disable-next-line anti-slop/no-runtime-typeof -- Runtime check for union members.
+      } else if (Array.isArray(v)) {
+        parts.push(`${k}=${JSON.stringify(v)}`);
       } else if (typeof v === "number" || typeof v === "boolean") {
         parts.push(`${k}=${String(v)}`);
       }
@@ -73,6 +83,7 @@ export function readVersions(): VersionInfo {
   try {
     // SAFETY: package.json is known to have an optional version string.
     const pkg = require("../package.json") as { version?: string };
+    // oxlint-disable-next-line anti-slop/no-runtime-typeof -- Runtime check for optional field.
     if (typeof pkg.version === "string") integration = pkg.version;
   } catch {
     /* empty */
@@ -85,6 +96,7 @@ export function readVersions(): VersionInfo {
       if (fs.existsSync(candidate)) {
         // SAFETY: core package.json is known to have an optional version string.
         const parsed = JSON.parse(fs.readFileSync(candidate, "utf8")) as { version?: string };
+        // oxlint-disable-next-line anti-slop/no-runtime-typeof -- Runtime check for optional field.
         if (typeof parsed.version === "string") {
           core = parsed.version;
           break;
@@ -163,8 +175,11 @@ export class OgCache {
     try {
       const raw = await fsp.readFile(path.join(root, "manifest.json"), "utf8");
       const parsed: unknown = JSON.parse(raw);
+      // oxlint-disable-next-line anti-slop/no-runtime-typeof -- Runtime check for JSON parse result.
       if (typeof parsed !== "object" || parsed === null) return undefined;
+      // SAFETY: parsed is an object, we validate version and globalKey below.
       const m = parsed as Manifest;
+      // oxlint-disable-next-line anti-slop/no-runtime-typeof
       if (m.version !== CACHE_VERSION || typeof m.globalKey !== "string") return undefined;
       return m;
     } catch {

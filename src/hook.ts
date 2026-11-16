@@ -40,17 +40,10 @@ interface RenderedPage {
   buffer: Buffer;
 }
 
-// SAFETY: when the render function's source never mentions `document` it cannot
-// access it (every legitimate use destructures or reads `.document`, both of
-// which contain the token). Passing a null-prototype stand-in keeps the typed
-// surface intact while skipping the DOM parse entirely.
-const NO_DOCUMENT: Document = Object.create(null) as unknown as Document;
+// SAFETY: When the render function doesn't use `document`, we pass a null-prototype
+// object cast to Document to satisfy the type signature without parsing HTML.
+const NO_DOCUMENT = Object.create(null) as Document;
 
-/**
- * Heuristic: does the render function's source reference `document` at all?
- * False positives (a comment, an unused param) only cost a redundant parse —
- * never a crash — so this is safe to use for a perf fast-path.
- */
 function needsDocument(render: RenderFunction): boolean {
   return /\bdocument\b/.test(render.toString());
 }
@@ -75,15 +68,18 @@ export async function buildDoneHook({
     const s0 = performance.now();
     try {
       await speculative;
-    } catch (e) {
-      logger.warn(`astro-takumi: speculative pre-render failed (${String(e)}); falling back to inline rendering`);
+    } catch (e: unknown) {
+      const msg = e instanceof Error ? e.message : String(e);
+      logger.warn(`astro-takumi: speculative pre-render failed (${msg}); falling back to inline rendering`);
     }
-    logger.info(`astro-takumi: waited ${Math.round(performance.now() - s0)}ms for speculative pre-render`);
+    logger.info(`astro-takumi: waited ${String(Math.round(performance.now() - s0))}ms for speculative pre-render`);
   }
 
   const renderer = new Renderer();
   const fontsRegistered = await registerFontsOnce(renderer, options.fonts, logger);
-  const fetchCache: Map<string, Promise<ArrayBuffer>> = cache ? new DiskFetchCache(cache.fetchDir) : new Map();
+  const fetchCache: Map<string, Promise<ArrayBuffer>> = cache
+    ? new DiskFetchCache(cache.fetchDir)
+    : new Map<string, Promise<ArrayBuffer>>();
 
   const parallelism = os.availableParallelism ? os.availableParallelism() : os.cpus().length;
   const level = Math.max(1, Math.min(options.concurrency ?? Math.min(8, parallelism), pages.length || 1));
@@ -92,7 +88,6 @@ export async function buildDoneHook({
   const targets =
     exclude !== undefined && exclude.length > 0 ? pages.filter((p) => !isExcluded(p.pathname, exclude)) : pages;
   const skipped = pages.length - targets.length;
-
   const requiresDom = needsDocument(render);
 
   let hits = 0;
@@ -124,7 +119,6 @@ export async function buildDoneHook({
     const r0 = performance.now();
     const htmlString = html.toString();
     const details = extractMetaFast(htmlString);
-    // Lazy DOM: skip linkedom/jsdom entirely when the renderer never touches it.
     const document = requiresDom ? await createDocument(htmlString, options.domBackend) : NO_DOCUMENT;
 
     const reactNode = await render({ ...page, ...details, dir, document });
@@ -197,7 +191,6 @@ export async function speculativePreRender({ logger, options, render, globalKey 
   const exclude = options.exclude;
   const targets =
     exclude !== undefined && exclude.length > 0 ? entries.filter((e) => !isExcluded(e.pathname, exclude)) : entries;
-
   const requiresDom = needsDocument(render);
   let done = 0;
 
@@ -223,8 +216,9 @@ export async function speculativePreRender({ logger, options, render, globalKey 
       });
       await cache.putBlob(rendered.key, rendered.buffer);
       done++;
-    } catch (e) {
-      logger.warn(`astro-takumi: speculative render failed for ${entry.pathname} (${String(e)})`);
+    } catch (e: unknown) {
+      const msg = e instanceof Error ? e.message : String(e);
+      logger.warn(`astro-takumi: speculative render failed for ${entry.pathname} (${msg})`);
     }
   });
 
@@ -264,33 +258,50 @@ async function renderPageToBuffer(input: RenderPageInput): Promise<RenderedPage>
   return { html: input.html, pathname: input.page.pathname, key, buffer };
 }
 
-// oxlint-disable typescript/no-explicit-any, anti-slop/require-safety-comment-for-type-assertion, anti-slop/no-runtime-typeof
 function buildRenderOptions(
   options: IntegrationOptions,
   css: string | string[] | undefined,
   images: ImageSource[],
   fontsRegistered: boolean,
 ): RenderOptions {
-  const cssArray = typeof css === "string" ? [css] : (css ?? []);
-  const renderOptions: RenderOptions = {
+  const cssArray = Array.isArray(css) ? css : css ? [css] : [];
+  // RenderOptions is a discriminated union on `format`. We must construct the object
+  // inside each branch so TS knows which variant we're building (quality only exists
+  // on jpeg/webp variants).
+  if (options.format === "jpeg" || options.format === "webp") {
+    const opts: RenderOptions = {
+      width: options.width,
+      height: options.height,
+      drawDebugBorder: options.drawDebugBorder,
+      css: cssArray,
+      images,
+      format: options.format,
+      quality: options.quality,
+    };
+    if (!fontsRegistered && options.fonts) {
+      opts.fonts = options.fonts;
+    }
+    if (options.fontFamilies) {
+      opts.fontFamilies = options.fontFamilies;
+    }
+    return opts;
+  }
+
+  const opts: RenderOptions = {
     width: options.width,
     height: options.height,
     drawDebugBorder: options.drawDebugBorder,
-    css: cssArray as any,
+    css: cssArray,
     images,
-    format: options.format as any,
-  } as RenderOptions;
-
-  if (options.format === "jpeg" || options.format === "webp") {
-    (renderOptions as any).quality = options.quality;
-  }
+    format: options.format,
+  };
   if (!fontsRegistered && options.fonts) {
-    (renderOptions as any).fonts = options.fonts;
+    opts.fonts = options.fonts;
   }
   if (options.fontFamilies) {
-    (renderOptions as any).fontFamilies = options.fontFamilies;
+    opts.fontFamilies = options.fontFamilies;
   }
-  return renderOptions;
+  return opts;
 }
 
 async function registerFontsOnce(
@@ -299,22 +310,30 @@ async function registerFontsOnce(
   logger: AstroIntegrationLogger,
 ): Promise<boolean> {
   if (fonts === undefined || fonts.length === 0) return false;
-  const candidate = renderer as unknown as { registerFont?: (font: FontLoader) => void | Promise<void> };
+  // SAFETY: registerFont is exposed in @takumi-rs/core 2.x but returns Promise<RegisteredFamily[]>
+  // instead of Promise<void>. We only care about success/failure, not the returned families.
+  const candidate = renderer as { registerFont?: (font: FontLoader) => Promise<unknown[]> };
+  // oxlint-disable-next-line anti-slop/no-runtime-typeof -- Checking for method existence on untyped extension.
   if (typeof candidate.registerFont !== "function") {
     logger.warn("astro-takumi: @takumi-rs/core has no registerFont(); using per-render fonts");
     return false;
   }
   try {
     for (const font of fonts) {
-      await Promise.resolve(candidate.registerFont(font));
+      await candidate.registerFont(font);
     }
     return true;
-  } catch (e) {
-    logger.warn(`astro-takumi: registerFont failed (${String(e)}); using per-render fonts`);
+  } catch (e: unknown) {
+    const msg = e instanceof Error ? e.message : String(e);
+    logger.warn(`astro-takumi: registerFont failed (${msg}); using per-render fonts`);
     return false;
   }
 }
 
 function isExcluded(pathname: string, patterns: (string | RegExp)[]): boolean {
-  return patterns.some((p) => (typeof p === "string" ? pathname.includes(p) : p.test(pathname)));
+  return patterns.some((p) => {
+    // oxlint-disable-next-line anti-slop/no-runtime-typeof -- Discriminating union of string | RegExp.
+    if (typeof p === "string") return pathname.includes(p);
+    return p.test(pathname);
+  });
 }
